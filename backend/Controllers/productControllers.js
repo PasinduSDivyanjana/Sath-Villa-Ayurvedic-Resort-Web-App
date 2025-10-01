@@ -40,6 +40,17 @@ const addProducts = async (req, res, next) => {
     });
 
     await product.save();
+    // Auto-broadcast notification for new product
+    try {
+      const Notification = require("../Model/notificationModel");
+      await Notification.create({
+        userId: null,
+        type: 'product_new',
+        title: 'New product added',
+        message: `${product.p_name} is now available`,
+        metadata: { productId: product._id }
+      });
+    } catch (e) { console.log('Notify new product skipped:', e.message); }
     return res.status(200).json({ product });
   } catch (err) {
     console.log(err);

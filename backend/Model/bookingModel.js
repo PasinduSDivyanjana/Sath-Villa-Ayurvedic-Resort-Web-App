@@ -17,7 +17,7 @@ const bookingSchema = new Schema({
   },
   b_packageType: {
     type: String,
-    enum: ['7 Days Package', '5 Days Package', 'Couple Package'],
+    enum: ['7 Days Rejuvenation', '14 Days Wellness', '21 Days Detox & Healing', 'Weekend Refresh (3 Days)', 'Senior Wellness (10 Days)'],
     required: true,
   },
   b_packageDuration: {
@@ -41,14 +41,9 @@ const bookingSchema = new Schema({
     type: Number,
     required: true,
   },
-  b_occupancyType: {
-    type: String,
-    enum: ['Single', 'Double'],
-    required: true,
-  },
-  b_roomPrice: {
+  b_discount: {
     type: Number,
-    required: true,
+    default: 0,
   },
   b_packagePrice: {
     type: Number,

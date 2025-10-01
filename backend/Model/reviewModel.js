@@ -6,6 +6,17 @@ const reviewSchema = new Schema({
         type: String,
         unique: true
     },
+    productId: {
+        type: String,
+        required: false,
+        ref: 'productModel'
+    },
+    userId: {
+        type: String,
+        required: true,
+        ref: 'userModel',
+        unique: true // one review per user
+    },
     name: {
         type: String,
         required: false,

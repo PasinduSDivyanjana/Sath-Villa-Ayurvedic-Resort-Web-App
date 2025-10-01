@@ -32,7 +32,7 @@ const upload = multer({
 // ✅ User Management Routes
 router.get("/", UserController.getAllUsers);       // Get all users
 router.get("/:id", UserController.getById);       // Get user by ID
-router.put("/:id", UserController.updateUser);    // Update user
+router.put("/update/:id", upload.single('profilePicture'), UserController.updateUser);    // Update user with profile picture
 router.delete("/:id", UserController.deleteUser); // Delete user
 
 // ✅ Authentication Routes

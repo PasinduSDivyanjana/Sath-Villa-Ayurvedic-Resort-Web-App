@@ -7,6 +7,7 @@ const bookingRoutes = require("./Routes/bookingRoutes");
 const userRoutes = require("./Routes/userRoutes");
 const inquiryRoutes = require("./Routes/inquiryRoutes");
 const reviewRoutes = require("./Routes/reviewRoutes");
+const notificationRoutes = require("./Routes/notificationRoutes");
 const path = require("path");
 const multer = require("multer");
 const app = express();
@@ -55,6 +56,7 @@ app.use("/bookings", bookingRoutes);
 app.use("/users", userRoutes);
 app.use("/inquiries", inquiryRoutes);
 app.use("/reviews", reviewRoutes);
+app.use("/notifications", notificationRoutes);
 
 // Error handling middleware
 app.use((error, req, res, next) => {
@@ -76,6 +78,20 @@ app.get("/test", (req, res) => {
 mongoose
   .connect("mongodb+srv://admin:2XINIMBJaAN6a05e@cluster0.t2o1tnw.mongodb.net/")
   .then(() => console.log("Connected to MongoDB"))
+  .then(async () => {
+    // One-time safeguard: drop old unique index on userId in inquiries if it exists
+    try {
+      const collection = mongoose.connection.db.collection('inquirymodels');
+      const indexes = await collection.indexes();
+      const userIdUnique = indexes.find(idx => idx.key && idx.key.userId === 1 && idx.unique);
+      if (userIdUnique) {
+        await collection.dropIndex(userIdUnique.name);
+        console.log('Dropped unique index on inquirymodels.userId');
+      }
+    } catch (e) {
+      console.log('Index cleanup skipped:', e.message);
+    }
+  })
   .then(() => {
     app.listen(5000, () => {
       console.log("Server is running on port 5000");

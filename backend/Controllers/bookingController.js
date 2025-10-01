@@ -71,32 +71,89 @@ const checkSpecificRoomAvailability = async (roomNumber, checkInDate, checkOutDa
   return overlappingBookings.length === 0;
 };
 
-// Calculate pricing based on package type, duration, and occupancy
-const calculatePricing = (packageType, duration, occupancyType) => {
-  // Base package prices per day
+// Calculate pricing based on package type, duration, guest count, and check-in date
+const calculatePricing = (packageType, duration, guestCount, checkInDate = null) => {
+  // Package prices based on season
   const packagePrices = {
-    '7 Days Package': 5000,
-    '5 Days Package': 6000,
-    'Couple Package': 7000
+    '7 Days Rejuvenation': {
+      season: 950,
+      offSeason: 750
+    },
+    '14 Days Wellness': {
+      season: 1800,
+      offSeason: 1450
+    },
+    '21 Days Detox & Healing': {
+      season: 2500,
+      offSeason: 2100
+    },
+    'Weekend Refresh (3 Days)': {
+      season: 450,
+      offSeason: 350
+    },
+    'Senior Wellness (10 Days)': {
+      season: 1600,
+      offSeason: 1250
+    }
   };
+
+  let isSeason = false;
+  let seasonInfo = '';
+
+  if (checkInDate) {
+    // Calculate which season the majority of the stay falls into
+    const checkIn = new Date(checkInDate);
+    const checkOut = new Date(checkIn);
+    checkOut.setDate(checkIn.getDate() + duration);
+    
+    let seasonDays = 0;
+    let offSeasonDays = 0;
+    
+    // Count days in each season
+    const currentDate = new Date(checkIn);
+    while (currentDate < checkOut) {
+      const month = currentDate.getMonth() + 1; // 1-12
+      // Season: November to April (11, 12, 1, 2, 3, 4)
+      // Off-Season: May to October (5, 6, 7, 8, 9, 10)
+      if (month >= 11 || month <= 4) {
+        seasonDays++;
+      } else {
+        offSeasonDays++;
+      }
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    // Determine which season has more days
+    isSeason = seasonDays > offSeasonDays;
+    seasonInfo = isSeason ? 
+      `Season (${seasonDays} days in season, ${offSeasonDays} days off-season)` : 
+      `Off-Season (${offSeasonDays} days off-season, ${seasonDays} days in season)`;
+  } else {
+    // Fallback to current date if no check-in date provided
+    const currentDate = new Date();
+    const currentMonth = currentDate.getMonth() + 1; // 1-12
+    isSeason = currentMonth >= 11 || currentMonth <= 4;
+    seasonInfo = isSeason ? 'Season (Nov-Apr)' : 'Off-Season (May-Oct)';
+  }
   
-  // Room prices per day based on occupancy
-  const roomPrices = {
-    'Single': 2000,
-    'Double': 3000
-  };
+  const packagePrice = packagePrices[packageType] ? 
+    (isSeason ? packagePrices[packageType].season : packagePrices[packageType].offSeason) : 0;
   
-  const packagePricePerDay = packagePrices[packageType] || 5000;
-  const roomPricePerDay = roomPrices[occupancyType] || 2000;
+  let totalPrice = packagePrice;
+  let discount = 0;
   
-  const totalPackagePrice = packagePricePerDay * duration;
-  const totalRoomPrice = roomPricePerDay * duration;
-  const totalPrice = totalPackagePrice + totalRoomPrice;
+  // If 2 guests (double occupancy), double the price and apply 10% discount
+  if (guestCount === 2) {
+    totalPrice = packagePrice * 2;
+    discount = totalPrice * 0.10;
+    totalPrice = totalPrice - discount;
+  }
   
   return {
-    packagePrice: totalPackagePrice,
-    roomPrice: totalRoomPrice,
-    totalPrice: totalPrice
+    packagePrice: packagePrice,
+    totalPrice: totalPrice,
+    discount: discount,
+    season: seasonInfo
   };
 };
 
@@ -252,15 +309,9 @@ const getBookingStats = async (req, res, next) => {
       return bookingDate.getMonth() === currentMonth && bookingDate.getFullYear() === currentYear;
     }).length;
     
-    // Revenue calculation (assuming different prices for different packages)
-    const packagePrices = {
-      '7 Days Package': 50000,
-      '5 Days Package': 35000,
-      'Couple Package': 40000
-    };
-    
+    // Revenue calculation using actual booking totals
     const totalRevenue = bookings.reduce((total, booking) => {
-      return total + (packagePrices[booking.b_packageType] || 0);
+      return total + (booking.b_totalPrice || 0);
     }, 0);
     
     return res.status(200).json({
@@ -309,13 +360,13 @@ const getAvailableRooms = async (req, res, next) => {
 // Get pricing information
 const getPricing = async (req, res, next) => {
   try {
-    const { packageType, duration, occupancyType } = req.query;
+    const { packageType, duration, guestCount, checkInDate } = req.query;
     
-    if (!packageType || !duration || !occupancyType) {
-      return res.status(400).json({ message: "Package type, duration, and occupancy type are required" });
+    if (!packageType || !duration || !guestCount) {
+      return res.status(400).json({ message: "Package type, duration, and guest count are required" });
     }
     
-    const pricing = calculatePricing(packageType, parseInt(duration), occupancyType);
+    const pricing = calculatePricing(packageType, parseInt(duration), parseInt(guestCount), checkInDate);
     
     return res.status(200).json({ pricing });
   } catch (err) {
@@ -351,22 +402,18 @@ const addBooking = async (req, res, next) => {
     b_packageDuration, 
     b_checkInDate, 
     b_guest,
-    b_roomNumber,
-    b_occupancyType
+    b_roomNumber
   } = req.body;
 
   try {
-    // Validate couple package minimum duration
-    if (b_packageType === 'Couple Package' && b_packageDuration < 5) {
-      return res.status(400).json({ message: "Couple package requires minimum 5 days" });
+    // Validate couple's retreat minimum duration
+    if (b_packageType === 'Couple\'s Retreat (5–7 Days)' && b_packageDuration < 5) {
+      return res.status(400).json({ message: "Couple's retreat requires minimum 5 days" });
     }
 
-    // Validate guest count for occupancy type
-    if (b_occupancyType === 'Single' && b_guest > 1) {
-      return res.status(400).json({ message: "Single occupancy allows maximum 1 guest" });
-    }
-    if (b_occupancyType === 'Double' && b_guest > 2) {
-      return res.status(400).json({ message: "Double occupancy allows maximum 2 guests" });
+    // Validate guest count
+    if (b_guest > 2) {
+      return res.status(400).json({ message: "Maximum 2 guests allowed per room" });
     }
 
     // Calculate check-out date
@@ -382,7 +429,7 @@ const addBooking = async (req, res, next) => {
     }
 
     // Calculate pricing
-    const pricing = calculatePricing(b_packageType, b_packageDuration, b_occupancyType);
+    const pricing = calculatePricing(b_packageType, b_packageDuration, b_guest, b_checkInDate);
     
     const booking = new Booking({
       b_name,
@@ -394,8 +441,7 @@ const addBooking = async (req, res, next) => {
       b_checkOutDate: checkOutDate,
       b_guest,
       b_roomNumber: parseInt(b_roomNumber),
-      b_occupancyType,
-      b_roomPrice: pricing.roomPrice,
+      b_discount: pricing.discount,
       b_packagePrice: pricing.packagePrice,
       b_totalPrice: pricing.totalPrice,
     });
@@ -440,9 +486,14 @@ const updateBooking = async (req, res, next) => {
       return res.status(404).json({ message: "Booking not found" });
     }
 
-    // Validate couple package minimum duration
-    if (b_packageType === 'Couple Package' && b_packageDuration < 5) {
-      return res.status(400).json({ message: "Couple package requires minimum 5 days" });
+    // Validate couple's retreat minimum duration
+    if (b_packageType === 'Couple\'s Retreat (5–7 Days)' && b_packageDuration < 5) {
+      return res.status(400).json({ message: "Couple's retreat requires minimum 5 days" });
+    }
+
+    // Validate guest count
+    if (b_guest > 2) {
+      return res.status(400).json({ message: "Maximum 2 guests allowed per room" });
     }
 
     // Calculate check-out date
@@ -457,6 +508,9 @@ const updateBooking = async (req, res, next) => {
       return res.status(400).json({ message: "No rooms available for the selected dates" });
     }
 
+    // Calculate new pricing
+    const pricing = calculatePricing(b_packageType, b_packageDuration, b_guest, b_checkInDate);
+
     // Update fields
     booking.b_name = b_name;
     booking.b_email = b_email;
@@ -467,6 +521,9 @@ const updateBooking = async (req, res, next) => {
     booking.b_checkOutDate = checkOutDate;
     booking.b_guest = b_guest;
     booking.b_roomNumber = availableRoom;
+    booking.b_discount = pricing.discount;
+    booking.b_packagePrice = pricing.packagePrice;
+    booking.b_totalPrice = pricing.totalPrice;
 
     await booking.save();
     return res.status(200).json({ booking });
